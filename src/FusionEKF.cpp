@@ -1,7 +1,8 @@
 #include "FusionEKF.h"
-#include "tools.h"
-#include "Eigen/Dense"
+
 #include <iostream>
+#include "Eigen/Dense"
+#include "tools.h"
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -22,22 +23,45 @@ FusionEKF::FusionEKF() {
   H_laser_ = MatrixXd(2, 4);
   Hj_ = MatrixXd(3, 4);
 
-  //measurement covariance matrix - laser
+  // measurement covariance matrix - laser
   R_laser_ << 0.0225, 0,
-        0, 0.0225;
+              0, 0.0225;
 
-  //measurement covariance matrix - radar
+  // measurement covariance matrix - radar
   R_radar_ << 0.09, 0, 0,
-        0, 0.0009, 0,
-        0, 0, 0.09;
+              0, 0.0009, 0,
+              0, 0, 0.09;
 
+  VectorXd x(4);
+  x << 0, 0, 0, 0;
+
+  MatrixXd F(4, 4);  // Will change with time
+  F << 1, 0, 1, 0,
+       0, 1, 0, 1,
+       0, 0, 1, 0,
+       0, 0, 0, 1;
+
+  MatrixXd H(2, 4);
+  H << 1, 0, 0, 0,
+       0, 1, 0, 0;
+
+  MatrixXd Q(4, 4);  // Init later
+
+  noise_ax_ = 9;
+  noise_ay_ = 9;
+
+  MatrixXd P(4, 4);
+  P << 1, 0, 0, 0,
+       0, 1, 0, 0,
+      0, 0, 1000, 0,
+      0, 0, 0, 1000;
+
+  ekf_.Init(x, P, F, H, R_laser_, R_radar_, Q);
   /**
   TODO:
     * Finish initializing the FusionEKF.
     * Set the process and measurement noises
   */
-
-
 }
 
 /**
@@ -46,8 +70,6 @@ FusionEKF::FusionEKF() {
 FusionEKF::~FusionEKF() {}
 
 void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
-
-
   /*****************************************************************************
    *  Initialization
    ****************************************************************************/
@@ -56,28 +78,34 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
     TODO:
       * Initialize the state ekf_.x_ with the first measurement.
       * Create the covariance matrix.
-      * Remember: you'll need to convert radar from polar to cartesian coordinates.
+      * Remember: you'll need to convert radar from polar to cartesian
+    coordinates.
     */
     // first measurement
     cout << "EKF: " << endl;
     ekf_.x_ = VectorXd(4);
-    ekf_.x_ << 1, 1, 1, 1;
-
     if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
       /**
       Convert radar from polar to cartesian coordinates and initialize state.
       */
-    }
-    else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
+      ekf_.x_ << tools.RadarToPV(measurement_pack.raw_measurements_);
+    } else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
       /**
       Initialize state.
       */
+      ekf_.x_ << measurement_pack.raw_measurements_(0), measurement_pack.raw_measurements_(1), 0, 0;
     }
+
+    last_time_ = measurement_pack.timestamp_;
 
     // done initializing, no need to predict or update
     is_initialized_ = true;
+
     return;
   }
+
+  double dt = (measurement_pack.timestamp_ - last_time_) / 1000000.0;
+  last_time_ = measurement_pack.timestamp_;
 
   /*****************************************************************************
    *  Prediction
@@ -90,6 +118,18 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
      * Update the process noise covariance matrix.
      * Use noise_ax = 9 and noise_ay = 9 for your Q matrix.
    */
+
+  ekf_.F_(0, 2) = dt;
+  ekf_.F_(1, 3) = dt;
+
+  double dt2 = dt * dt;
+  double dt3 = dt2 * dt;
+  double dt4 = dt3 * dt;
+  ekf_.Q_ = MatrixXd(4, 4);
+  ekf_.Q_ << dt4 / 4 * noise_ax_, 0, dt3 / 2 * noise_ax_, 0,
+             0, dt4 / 4 * noise_ay_, 0, dt3 / 2 * noise_ay_,
+             dt3 / 2 * noise_ax_, 0, dt2 * noise_ax_, 0,
+             0, dt3 / 2 * noise_ay_, 0, dt2 * noise_ay_;
 
   ekf_.Predict();
 
@@ -105,8 +145,11 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
 
   if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
     // Radar updates
+    ekf_.Hj_ = tools.CalculateJacobian(ekf_.x_);
+    ekf_.UpdateEKF(measurement_pack.raw_measurements_);
   } else {
     // Laser updates
+    ekf_.Update(measurement_pack.raw_measurements_);
   }
 
   // print the output

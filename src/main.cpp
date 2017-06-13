@@ -49,7 +49,6 @@ int main() {
         auto j = json::parse(s);
 
         std::string event = j[0].get<std::string>();
-        std::cout << "asd " << event << std::endl;
 
         if (event == "telemetry") {
           // j[1] is the data JSON object
@@ -102,6 +101,8 @@ int main() {
           gt_values(3) = vy_gt;
           ground_truth.push_back(gt_values);
 
+          //std::cout << "GT: " << gt_values << std::endl;
+
           // Call ProcessMeasurment(meas_package) for Kalman filter
           fusionEKF.ProcessMeasurement(meas_package);
 
@@ -131,6 +132,9 @@ int main() {
           msgJson["rmse_y"] = RMSE(1);
           msgJson["rmse_vx"] = RMSE(2);
           msgJson["rmse_vy"] = RMSE(3);
+
+          //std::cout << "rmse " << RMSE << std::endl;
+
           auto msg = "42[\"estimate_marker\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
