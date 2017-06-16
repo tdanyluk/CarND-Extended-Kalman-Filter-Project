@@ -29,7 +29,7 @@ int main() {
   uWS::Hub h;
 
   // Create a Kalman Filter instance
-  FusionEKF fusionEKF;
+  tomi92::kalman_filter::FusionEKF fusionEKF;
 
   // used to compute the RMSE later
   Tools tools;
@@ -101,7 +101,7 @@ int main() {
           gt_values(3) = vy_gt;
           ground_truth.push_back(gt_values);
 
-          //std::cout << "GT: " << gt_values << std::endl;
+          // std::cout << "GT: " << gt_values << std::endl;
 
           // Call ProcessMeasurment(meas_package) for Kalman filter
           fusionEKF.ProcessMeasurement(meas_package);
@@ -111,10 +111,10 @@ int main() {
 
           VectorXd estimate(4);
 
-          double p_x = fusionEKF.ekf_.x_(0);
-          double p_y = fusionEKF.ekf_.x_(1);
-          double v1 = fusionEKF.ekf_.x_(2);
-          double v2 = fusionEKF.ekf_.x_(3);
+          double p_x = fusionEKF.GetX()(0);
+          double p_y = fusionEKF.GetX()(1);
+          double v1 = fusionEKF.GetX()(2);
+          double v2 = fusionEKF.GetX()(3);
 
           estimate(0) = p_x;
           estimate(1) = p_y;
@@ -133,7 +133,7 @@ int main() {
           msgJson["rmse_vx"] = RMSE(2);
           msgJson["rmse_vy"] = RMSE(3);
 
-          //std::cout << "rmse " << RMSE << std::endl;
+          // std::cout << "rmse " << RMSE << std::endl;
 
           auto msg = "42[\"estimate_marker\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
@@ -167,8 +167,9 @@ int main() {
 
   h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
                          char *message, size_t length) {
-    ws.close();
+    // ws.close(); This caused a stack overflow :-(
     std::cout << "Disconnected" << std::endl;
+    exit(0);
   });
 
   int port = 4567;

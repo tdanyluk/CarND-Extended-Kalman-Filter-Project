@@ -1,80 +1,112 @@
-#ifndef KALMAN_FILTER_H_
-#define KALMAN_FILTER_H_
+#ifndef KALMAN_FILTER_H
+#define KALMAN_FILTER_H
+
+#include <tuple>
 #include "Eigen/Dense"
 
-class KalmanFilter {
- public:
-  // state vector
-  Eigen::VectorXd x_;
+namespace tomi92 {
+namespace kalman_filter {
 
-  // state covariance matrix
-  Eigen::MatrixXd P_;
+/**
+ * Extended Kálmán Filter Predict
+ *
+ * x: State Vector
+ * P: State Covariance Matrix
+ * dt: Elapsed time since last measurement
+ * dg_f: (x, dt) -> x': State Transition Function
+ * dg_F: (x, dt) -> F: State Transition Matrix generator
+ * dg_Q: (dt) -> Q: Process Covariance Matrix generator
+ */
+template <typename Dg_f, typename Dg_F, typename Dg_Q>
+const auto EkfPredict(const Eigen::VectorXd &x, const Eigen::MatrixXd &P,
+                      const double dt, const Dg_f &dg_f, const Dg_F &dg_F,
+                      const Dg_Q &dg_Q) {
+  const Eigen::MatrixXd &F = dg_F(x, dt);
 
-  // state transition matrix
-  Eigen::MatrixXd F_;
+  return std::tuple<Eigen::VectorXd, Eigen::MatrixXd>(
+      dg_f(x, dt), F * P * F.transpose() + dg_Q(dt));
+}
 
-  // process covariance matrix
-  Eigen::MatrixXd Q_;
+/**
+ * Kálmán Filter Predict
+ *
+ * x: State Vector
+ * P: State Covariance Matrix
+ * dt: Elapsed time since last measurement
+ * dg_F: (dt) -> F: State Transition Matrix generator
+ * dg_Q: (dt) -> Q: Process Covariance Matrix generator
+ */
+template <typename Dg_F, typename Dg_Q>
+const auto KfPredict(const Eigen::VectorXd &x, const Eigen::MatrixXd &P,
+                     const double dt, const Dg_F &dg_F, const Dg_Q &dg_Q) {
+  const Eigen::MatrixXd &F = dg_F(dt);
 
-  // measurement matrix
-  Eigen::MatrixXd H_;
+  const auto dg_f = [&F](const auto &x, const double dt) -> Eigen::VectorXd {
+    return F * x;
+  };
 
-  // measurement matrix
-  Eigen::MatrixXd Hj_;
+  const auto dg_F2 = [&F](
+      const auto &x, const double dt) -> const Eigen::MatrixXd & { return F; };
 
-  // measurement covariance matrix
-  Eigen::MatrixXd R_laser_;
+  return EkfPredict(x, P, dt, dg_f, dg_F2, dg_Q);
+}
 
-  // measurement covariance matrix
-  Eigen::MatrixXd R_radar_;
+/**
+ * Extended Kálmán Filter Measure
+ *
+ * x: State Vector
+ * P: State Covariance Matrix
+ * dt: Elapsed time since last measurement
+ * z: Raw measurement
+ * dg_h: (x, z) -> y: "Measurement function"
+ * dg_H: (x) -> H: Measurement Matrix generator
+ * R: Measurement Covariance Matrix
+ */
+template <typename Dg_h, typename Dg_H>
+const auto EkfMeasure(const Eigen::VectorXd &x, const Eigen::MatrixXd &P,
+                      const double dt, const Eigen::VectorXd &z,
+                      const Dg_h &dg_h, const Dg_H &dg_H,
+                      const Eigen::MatrixXd &R) {
+  const Eigen::MatrixXd &H = dg_H(x);
+  const Eigen::MatrixXd Ht = H.transpose();
 
-  /**
-   * Constructor
-   */
-  KalmanFilter();
+  Eigen::MatrixXd y = dg_h(x, z);
+  const Eigen::MatrixXd S = H * P * Ht + R;
+  const Eigen::MatrixXd K = P * Ht * S.inverse();
 
-  /**
-   * Destructor
-   */
-  virtual ~KalmanFilter();
+  const size_t x_size = x.size();
+  const Eigen::MatrixXd I = Eigen::MatrixXd::Identity(x_size, x_size);
 
-  /**
-   * Init Initializes Kalman filter
-   * @param x_in Initial state
-   * @param P_in Initial state covariance
-   * @param F_in Transition matrix
-   * @param H_in Measurement matrix
-   * @param R_in Measurement covariance matrix
-   * @param Q_in Process covariance matrix
-   */
-  void Init(Eigen::VectorXd &x_in, Eigen::MatrixXd &P_in, Eigen::MatrixXd &F_in,
-            Eigen::MatrixXd &H_in, Eigen::MatrixXd &R_laser_in,
-            Eigen::MatrixXd &R_radar_in, Eigen::MatrixXd &Q_in);
+  return std::tuple<Eigen::VectorXd, Eigen::MatrixXd>(x + K * y, (I - K * H) * P);
+}
 
-  /**
-   * Prediction Predicts the state and the state covariance
-   * using the process model
-   * @param delta_T Time between k and k+1 in s
-   */
-  void Predict();
+/**
+ * Kálmán Filter Measure
+ *
+ * x: State Vector
+ * P: State Covariance Matrix
+ * dt: Elapsed time since last measurement
+ * z: Raw measurement
+ * H: Measurement Matrix
+ * R: Measurement Covariance Matrix
+ */
+inline const auto KfMeasure(const Eigen::VectorXd &x, const Eigen::MatrixXd &P,
+                            const double dt, const Eigen::VectorXd &z,
+                            const Eigen::MatrixXd &H,
+                            const Eigen::MatrixXd &R) {
+  const auto dg_h = [&H](const auto &x,
+                         const auto &z) -> const Eigen::MatrixXd {
+    return z - H * x;
+  };
 
-  /**
-   * Updates the state by using standard Kalman Filter equations
-   * For Lidar
-   * @param z The measurement at k+1
-   */
-  void Update(const Eigen::VectorXd &z);
+  const auto dg_H = [&H](const auto &x) -> const Eigen::MatrixXd & {
+    return H;
+  };
 
-  /**
-   * Updates the state by using Extended Kalman Filter equations
-   * For radar
-   * @param z The measurement at k+1
-   */
-  void UpdateEKF(const Eigen::VectorXd &z);
+  return EkfMeasure(x, P, dt, z, dg_h, dg_H, R);
+}
 
-  Eigen::VectorXd h(const Eigen::VectorXd &x);
+}  // namespace kalman_filter
+}  // namespace tomi92
 
-  double Normalize(double rad);
-};
-
-#endif /* KALMAN_FILTER_H_ */
+#endif  // KALMAN_FILTER_H

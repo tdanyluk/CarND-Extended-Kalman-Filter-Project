@@ -25,12 +25,7 @@ class Tools {
   VectorXd CalculateRMSE(const vector<VectorXd>& estimations,
                          const vector<VectorXd>& ground_truth);
 
-  /**
-  * A helper method to calculate Jacobians.
-  */
-  MatrixXd CalculateJacobian(const VectorXd& x_state);
-
-  VectorXd RadarToPV(const VectorXd& radar_data);
+  // CalculateJacobian moved to FusionEKF::CalculateHjRadar
 };
 
 #endif /* TOOLS_H_ */

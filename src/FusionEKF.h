@@ -1,53 +1,49 @@
-#ifndef FusionEKF_H_
-#define FusionEKF_H_
+#ifndef FUSION_EKF_1_H
+#define FUSION_EKF_1_H
 
-#include <fstream>
-#include <string>
-#include <vector>
-#include "Eigen/Dense"
-#include "kalman_filter.h"
+#include <cstdint>
 #include "measurement_package.h"
-#include "tools.h"
+
+namespace tomi92 {
+namespace kalman_filter {
 
 class FusionEKF {
  public:
-  /**
-  * Constructor.
-  */
   FusionEKF();
 
-  /**
-  * Destructor.
-  */
   virtual ~FusionEKF();
 
-  /**
-  * Run the whole flow of the Kalman Filter from here.
-  */
-  void ProcessMeasurement(const MeasurementPackage &measurement_pack);
+  void ProcessMeasurement(const MeasurementPackage& measurement_pack);
 
-  /**
-  * Kalman Filter update and prediction math lives in here.
-  */
-  KalmanFilter ekf_;
+  const Eigen::VectorXd& GetX() { return x_; }
 
  private:
-  // check whether the tracking toolbox was initialized or not (first
-  // measurement)
+  // Variable members
+  Eigen::VectorXd x_;
+  Eigen::MatrixXd P_;
   bool is_initialized_;
+  int64_t previous_timestamp_;
 
-  // previous timestamp
-  long long previous_timestamp_;
-
-  // tool object used to compute Jacobian and RMSE
-  Tools tools;
+  // Constant members
+  double noise_ax_;
+  double noise_ay_;
   Eigen::MatrixXd R_laser_;
   Eigen::MatrixXd R_radar_;
   Eigen::MatrixXd H_laser_;
-  Eigen::MatrixXd Hj_;
-  double noise_ax_;
-  double noise_ay_;
-  long long last_time_;
+
+  static const double Normalize(const double rad);
+  static const Eigen::MatrixXd CalculateF(const double dt);
+  static const Eigen::MatrixXd CalculateQ(const double noise_ax,
+                                          const double noise_ay,
+                                          const double dt);
+  static const Eigen::MatrixXd CalculateHjRadar(const Eigen::VectorXd& x_state);
+  static const Eigen::VectorXd hRadar(const Eigen::VectorXd& x,
+                                      const Eigen::VectorXd& z);
+  static const Eigen::VectorXd RadarToPV(const Eigen::VectorXd& radar_data);
+  static const Eigen::VectorXd LaserToPV(const Eigen::VectorXd& laser_data);
 };
 
-#endif /* FusionEKF_H_ */
+}  // namespace kalman_filter
+}  // namespace tomi92
+
+#endif  // FUSION_EKF_1_H
