@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <iostream>
+#include <cstdlib>
 #include "kalman_filter.h"
 
 using namespace std;
@@ -10,6 +11,11 @@ using Eigen::VectorXd;
 
 namespace tomi92 {
 namespace kalman_filter {
+
+namespace {
+  constexpr double Pi = 3.14159265358979323846;
+  constexpr double TwoPi = 2 * Pi;
+}
 
 FusionEKF::FusionEKF()
     : x_(4),
@@ -61,6 +67,13 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage& measurement_pack) {
       bind(FusionEKF::CalculateQ, noise_ax_, noise_ay_, placeholders::_1);
   tie(x_, P_) = KfPredict(x_, P_, dt, FusionEKF::CalculateF, calcQ);
 
+
+  if(x_(0)*x_(0) + x_(1)*x_(1) < 0.0001) {
+    double randomRad = rand() * TwoPi / RAND_MAX;
+    x_(0) = 0.001 * cos(randomRad);
+    x_(1) = 0.001 * sin(randomRad);
+  }
+
   if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
     tie(x_, P_) = EkfMeasure(x_, P_, dt, measurement_pack.raw_measurements_,
                              FusionEKF::hRadar, FusionEKF::CalculateHjRadar, R_radar_);
@@ -74,9 +87,6 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage& measurement_pack) {
 }
 
 const double FusionEKF::Normalize(double rad) {
-  constexpr double Pi = 3.14159265358979323846;
-  constexpr double TwoPi = 2 * Pi;
-
   while (rad <= -Pi) {
     rad += TwoPi;
   }
@@ -125,10 +135,6 @@ const Eigen::MatrixXd FusionEKF::CalculateHjRadar(const VectorXd& x_state) {
   const double n1_2 = sqrt(n);
   const double n3_2 = n1_2 * n1_2 * n1_2;
 
-  if (n < 0.0001) {
-    return MatrixXd::Zero(3, 4);
-  }
-
   Hj(0, 0) = px / n1_2;
   Hj(0, 1) = py / n1_2;
   Hj(0, 2) = 0;
@@ -156,12 +162,7 @@ const Eigen::VectorXd FusionEKF::hRadar(const Eigen::VectorXd& x,
 
   VectorXd hx(3);
   const double n = sqrt(px * px + py * py);
-
-  if (n < 0.0001) {
-    hx << n, 0, 0;
-  } else {
-    hx << n, atan2(py, px), (px * vx + py * vy) / n;
-  }
+  hx << n, atan2(py, px), (px * vx + py * vy) / n;
 
   VectorXd y = z - hx;
   y(1) = Normalize(y(1));
